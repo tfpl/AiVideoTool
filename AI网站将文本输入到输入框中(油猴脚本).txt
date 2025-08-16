@@ -1,0 +1,185 @@
+// ==UserScript==
+// @name         AI网站将文本输入到输入框中
+// @namespace    http://tampermonkey.net/
+// @version      1.1
+// @description  右下角灰白背景+黑色字体波纹上传按钮，点击选择文件并打印信息
+// @match        *://*/*
+// @grant        none
+// @include           *://*.chatgpt/v_*
+// @include           *://*.deepseek/v_*
+// ==/UserScript==
+
+(function () {
+  'use strict';
+
+  // 注入样式
+  const style = document.createElement('style');
+  style.textContent = `
+    .upload-btn {
+      display: inline-block;
+      width: 120px;
+      height: 40px;
+      border-radius: 24px;
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      border: none;
+      outline: none;
+      cursor: pointer;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, .2);
+      background: #f5f5f5;   /* 灰白背景 */
+      color: #000;           /* 黑色字体 */
+      font-size: 14px;
+      font-weight: bold;
+      overflow: hidden;
+      z-index: 2147483647;
+    }
+    .upload-btn .ripple {
+      display: block;
+      position: absolute;
+      border-radius: 100%;
+      background: linear-gradient(
+        45deg,
+        rgba(100,100,100,.3),
+        rgba(150,150,150,.3),
+        rgba(200,200,200,.3),
+        rgba(120,120,120,.3)
+      ); /* 灰色系渐变波纹 */
+      transform: scale(0);
+      pointer-events: none;
+    }
+    .upload-btn .animated {
+      animation: ripple 0.6s linear;
+    }
+    @keyframes ripple {
+      100% {
+        opacity: 0;
+        transform: scale(2.5);
+      }
+    }
+  `;
+  document.head.appendChild(style);
+
+  // 隐藏的文件选择器
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.style.display = 'none';
+  document.body.appendChild(fileInput);
+
+  // 创建按钮
+  const btn = document.createElement('button');
+  btn.className = 'upload-btn ripple-effect';
+  btn.textContent = '上传文件';
+
+  // 波纹效果的 span
+  const rippleSpan = document.createElement('span');
+  rippleSpan.className = 'ripple';
+  btn.appendChild(rippleSpan);
+
+  document.body.appendChild(btn);
+
+        // 查找页面中最可能的输入框
+    function findInputField() {
+        // 尝试查找各种可能的输入元素
+        const selectors = [
+            'textarea',
+            'input[type="text"]',
+            'input[type="search"]',
+            'input:not([type])',
+            '[contenteditable="true"]',
+            '.ProseMirror',
+            '.editable',
+            '[role="textbox"]'
+        ];
+
+        for (const selector of selectors) {
+            const elements = document.querySelectorAll(selector);
+            for (let el of elements) {
+                // 检查元素是否可见且可交互
+                if (el.offsetWidth > 0 && el.offsetHeight > 0 && !el.disabled) {
+                    return el;
+                }
+            }
+        }
+        return null;
+    }
+
+  // 点击触发波纹和文件选择
+  btn.addEventListener('click', function (event) {
+    // 波纹动画
+    const ripple = rippleSpan;
+    ripple.classList.remove('animated'); // 先清除
+    const size = Math.max(btn.offsetWidth, btn.offsetHeight);
+    ripple.style.width = ripple.style.height = size + 'px';
+    ripple.style.left = (event.offsetX - size / 2) + 'px';
+    ripple.style.top = (event.offsetY - size / 2) + 'px';
+    ripple.classList.add('animated');
+    setTimeout(() => ripple.classList.remove('animated'), 600);
+
+    // 打开文件选择
+    fileInput.click();
+  });
+
+  // 文件选择变化时的处理
+    fileInput.addEventListener('change', async (event) => {
+        const files = event.target.files;
+        if (files.length === 0) {
+            console.log('用户取消了文件选择');
+            return;
+        }
+
+        const file = files[0];
+        console.log('用户选择了文件:', file.name);
+
+        try {
+            // 查找输入框
+            const inputField = findInputField();
+            if (!inputField) {
+                alert('错误：未找到页面中的输入框！');
+                console.error('未找到输入框');
+                return;
+            }
+
+            // 读取文件内容
+            let content = await readFileAsText(file);
+            content = `根据作者、日期、总结、观点、新闻内容摘要五个总结内容，总结要是内容的一句话总结,并按照 Excel 文本格式输出能直接粘贴到excel。\n名称: ${file.name} \n内容: ${content}`;
+            console.log('文件内容已读取，长度:', content.length);
+
+            // 将内容放入输入框（区分不同类型）
+            if (inputField.tagName === 'TEXTAREA' || inputField.tagName === 'INPUT') {
+                inputField.value = content;
+            } else if (inputField.isContentEditable || inputField.classList.contains('ProseMirror')) {
+                // 对于富文本编辑器，保留换行格式
+                inputField.innerHTML = content.replace(/\n/g, '<br>');
+            } else {
+                inputField.textContent = content;
+            }
+
+            // 触发输入事件以确保框架能检测到变化
+            const inputEvent = new Event('input', { bubbles: true });
+            inputField.dispatchEvent(inputEvent);
+
+            // 触发其他可能需要的变更事件
+            const changeEvent = new Event('change', { bubbles: true });
+            inputField.dispatchEvent(changeEvent);
+
+            console.log('文件内容已放入输入框:', inputField);
+          
+        } catch (error) {
+            console.error('处理文件时出错:', error);
+            alert(`处理文件时出错: ${error.message}`);
+        }
+    });
+
+    // 读取文件为文本的Promise封装
+    function readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(new Error('文件读取失败'));
+            reader.readAsText(file);
+        });
+    }
+
+    console.log('文件上传脚本已加载');
+})();
