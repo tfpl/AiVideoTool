@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import pandas as pd
 from playwright.async_api import async_playwright
@@ -11,6 +11,7 @@ OUTPUT_FILE = os.path.join(os.path.dirname(__file__),"douyin_videos.xlsx")
 
 def load_cookies_txt(file_path):
     """解析 cookies.txt 为 Playwright 可用格式"""
+    print(f"加载cookies路径{file_path}")
     cookies = []
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -53,10 +54,7 @@ async def scrape_user_videos(user_url):
 
         # print("\033[31mExcel 手动退出的，不需要请注释\033[0m")
         # sys.exit(0)
-        # 如果存在今天的数据，直接结束脚本
-        if df["发布时间"].dt.date.isin([today]).any():
-            print("Excel 中已经存在今天的数据，脚本结束。")
-            sys.exit(0)
+       
 
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
@@ -96,6 +94,7 @@ async def scrape_user_videos(user_url):
                     return
                 for item in data.get("aweme_list", []) or []:
                     v = item.get("video") or {}
+                    
                     share_url = item.get("share_url") or {}
                     user_name = item.get("author") or {}
                     stats = item.get("statistics") or {}
@@ -103,16 +102,27 @@ async def scrape_user_videos(user_url):
                     cover_addr = (v.get("cover") or {}).get("url_list") or []
                     timestamp = item.get("create_time")
                     publish_time = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S") if timestamp else None
-                    video_list.append({
-                        "标题": item.get("desc"),
-                        "作者": user_name.get("nickname"),
-                        "评论": stats.get("comment_count"),
-                        "点赞数": stats.get("digg_count"),
-                        "视频地址(可能有水印)": play_addr[0] if play_addr else None,
-                        "分享地址": share_url if share_url else None,
-                        "封面": cover_addr[0] if cover_addr else None,
-                        "发布时间": publish_time
-                    })
+                    title = item.get("desc")
+                    if not title:  # 如果为空或None
+                        title = publish_time  # 用发布时间替代
+                    # 转换发布时间为 datetime
+                    pub_time = datetime.strptime(publish_time, "%Y-%m-%d %H:%M:%S")
+
+                    # 一周前的时间
+                    one_week_ago = datetime.now() - timedelta(days=7)
+                    if pub_time >= one_week_ago:
+                        video_list.append({
+                            "标题": title,
+                            "作者": user_name.get("nickname"),
+                            "评论": stats.get("comment_count"),
+                            "点赞数": stats.get("digg_count"),
+                            "视频地址(可能有水印)": play_addr[0] if play_addr else None,
+                            "分享地址": share_url if share_url else None,
+                            "封面": cover_addr[0] if cover_addr else None,
+                            "发布时间": publish_time
+                        })
+                    if pub_time >= one_week_ago:
+                        print(f"用户视频一周前发布，不下载：{title}")
 
         page.on("response", lambda r: asyncio.create_task(process_response(r)))
 
@@ -127,7 +137,14 @@ async def scrape_user_videos(user_url):
             except:
                 pass
 
+        # 等待接口回调处理
+        for _ in range(10):
+            if video_list:
+                break
+            await asyncio.sleep(1)
 
+        if not video_list:
+            print("❌ 没有抓到任何视频，可能页面未加载或 cookies 失效。")
 
         # 读取已有 Excel 文件
         if os.path.exists(OUTPUT_FILE):
@@ -149,7 +166,7 @@ async def scrape_user_videos(user_url):
         # 清理列名空格
  
 
-        if not existing_df.empty:
+        if not existing_df.empty and not new_df.empty:
             # 找到新数据中与已有数据在三个字段任意一个重复的行
             mask = (
                 new_df["标题"].notna() & new_df["标题"].isin(existing_df["标题"]) |
@@ -177,10 +194,7 @@ async def scrape_user_videos(user_url):
         await asyncio.sleep(sleep_time)
         await browser.close()
         
-        sleep_time = random.uniform(0, 2)  # 0~2 秒的随机浮点数
-        print(f"⏳ 随机等待 {sleep_time:.2f} 秒再关闭浏览器...")
-        await asyncio.sleep(sleep_time)
-        await browser.close()
+       
 
 if __name__ == "__main__":
     user_url = "https://www.douyin.com/user/MS4wLjABAAAAz-Nssy-G6nNshJODTK3VpEpjWsH1pMHODDPexGS5K-D6EAo5iASK_qCGRb7M5Rbe?from_tab_name=main&vid=7533915948521999675"  # 替换为目标用户主页

@@ -37,7 +37,7 @@ if os.path.exists(txt_file):
 unique_links = [link for link in new_links if link not in existing_links]
 
 # 写入 TXT（追加模式）
-with open(txt_file, "a", encoding="utf-8") as f:
+with open(txt_file, "w", encoding="utf-8") as f:
     for link in unique_links:
         f.write(link + "\n")
 
