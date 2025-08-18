@@ -51,6 +51,7 @@ while True:
     if not line:
         if process.poll() is not None:  # 程序结束
             break
+        print("[程序输出] 开始睡8分钟")
         time.sleep(500)
         continue
     line = line.strip()
@@ -75,22 +76,36 @@ while True:
             pyautogui.typewrite("2")
             pyautogui.press("enter")
             time.sleep(0.25)
+            break
 
-            # 粘贴中文路径
-            print(f"输入文件路径: {file_path}")
-            pyperclip.copy(file_path)
-            pyautogui.hotkey("ctrl", "v")
-            pyautogui.press("enter")
-            download_started = True
-            print(f"\033[32m请耐心等待几分钟，下载中\033[0m")
+   
+# 粘贴中文路径
+pyperclip.copy(file_path)
+pyautogui.hotkey("ctrl", "v")
+pyautogui.press("enter")
+download_started = True
+print(f"\033[32m请耐心等待几分钟，下载中\033[0m")
 
+while True:
+    line = process.stdout.readline()
+    if not line:
+        if process.poll() is not None:  # 程序结束
+            break
+        print("[程序输出] 开始睡8分钟")
+        time.sleep(500)
+        continue
+    line = line.strip()
     # ---------------- 判断下载完成 ----------------
-    if download_started and "已退出批量下载链接作品" in line:
+    if  "已退出批量下载链接作品" in line:
+        time.sleep(5)
         success = True
-         # 结束外部程序
+            # 结束外部程序
         process.terminate()  # 温和结束
         # process.kill()    # 强制结束，也可以使用
-        break  # 退出循环
+        break
+    if "请输入文本文档路径" not in line:
+        print(f"[程序输出] {line}")
+   
 
 # ---------------- 判断结果 ----------------
 if success:

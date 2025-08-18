@@ -107,17 +107,26 @@ for %%f in (*.mp4 *.mkv) do (
     move "%%f" "视频\"
 )
 
-rem 移动其他非Excel非bat文件
+rem 遍历当前目录下所有文件
 for %%f in (*) do (
     set "ext=%%~xf"
     set "file=%%~nxf"
 
+    rem 判断文件扩展名不是 Excel，也不是 BAT
     if /I not "!ext!"==".xls" if /I not "!ext!"==".xlsx" if /I not "!ext!"==".bat" (
-        if not exist "中文文本\!file!" (
-            if not exist "视频\!file!" (
-            
-                move "%%f" "其他文件\"
+
+        rem 文件名中不包含 alreadyT2S
+        echo !file! | findstr /I "alreadyT2S" >nul
+        if errorlevel 1 (
+
+            rem 检查目标目录是否已有同名文件
+            if not exist "中文文本\!file!" (
+                if not exist "视频\!file!" (
+                    if not exist "其他文件\" mkdir "其他文件"
+                    move "%%f" "其他文件\"
+                )
             )
+
         )
     )
 )
@@ -130,7 +139,7 @@ for %%f in (*alreadyT2S*.txt) do (
 
 
 echo ==========================
-echo 所有文件处理与分类完成！翻译后的文本放在中文问二八年目录下，视频放到视频目录下，其他文件放在其他文件下
+echo 所有文件处理与分类完成！翻译后的文本放在中文文本目录下，视频放到视频目录下，其他文件放在其他文件下
 echo ==========================
 echo  请将文本交给ai，根据作者,日期,总结,观点,新闻内容摘要五个总结内容，总结是内容的一句话总结。并按照excel文本格式输出，作者和日期都在文件名称中,将今天的内容一起输出，最后复制到[2-生活记录-经济新闻]新闻观点内容整理.xls
 pause
